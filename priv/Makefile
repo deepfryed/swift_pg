@@ -1,0 +1,66 @@
+# ============= compiler settings ==============================================
+MIX       = mix
+CC       ?= gcc
+OS       ?= $(shell uname -s)
+
+ERL_ARGS  = -s init stop -noshell
+ERL_EVAL  = 'io:format("~s", [lists:concat([code:root_dir(), "/erts-", erlang:system_info(version)])])'
+ERTS_ROOT = $(shell erl -eval $(ERL_EVAL) $(ERL_ARGS))
+ERTS_INCL = $(ERTS_ROOT)/include
+ERTS_LIBS = -L$(ERTS_ROOT)/lib -lerts
+
+LPQ_INCL  = $(shell pg_config --includedir)
+
+CFLAGS    = -std=c99 -g3 -Wall -Wextra -Wpedantic -Wno-unused-parameter
+CFLAGS   += -Werror
+CFLAGS   += -I$(ERTS_INCL) -I$(LPQ_INCL)
+
+LPQ_LIBS  = -L$(shell pg_config --libdir) -lpq
+#LDFLAGS   = -fPIC -shared 
+LDFLAGS   = -fPIC -dynamiclib -undefined dynamic_lookup 
+LDFLAGS  += $(LPQ_LIBS) $(ERTS_LIBS)
+# ==============================================================================
+
+# ==============================================================================
+# DEBUG malloc
+#
+# LDFLAGS += -Wl,--wrap,malloc -Wl,--wrap,realloc -Wl,--wrap,calloc -Wl,--wrap,free
+# ==============================================================================
+
+# ============= common library sources =========================================
+LIB_SRCS  = $(wildcard src/*.c)
+LIB_CSRCS = $(LIB_SRCS:src/%=%)
+LIB_OBJS  = $(addprefix obj/,$(LIB_CSRCS:.c=.o))
+# ==============================================================================
+
+# ============= dependencies ===================================================
+DEPENDS   = $(LIB_OBJS:.o=.d)
+# ==============================================================================
+
+all: swift_pg.so
+
+-include $(DEPENDS)
+
+swift_pg.so: $(LIB_OBJS)
+	$(CC) $(LIB_OBJS) $(LDFLAGS) -o swift_pg.so
+
+obj/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -MF $(@:%.o=%.d) -c -o $@ $<
+
+bin/%: obj/%.o $(LIB_OBJS)
+	@mkdir -p $(dir $@)
+	$(CC) $(LDFLAGS) -Wl,-Map=$@.map -o $@ $^
+
+clean:
+	rm -rf obj/* *.so
+
+# allows make print-<x> to print the value of variable x
+print-%:
+	@echo
+	@echo $*:
+	@echo $($*)
+	@echo
+
+.PHONY: all clean
+.SECONDARY: $(LIB_OBJS) $(EXE_OBJS)
