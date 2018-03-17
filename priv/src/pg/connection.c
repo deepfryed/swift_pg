@@ -211,8 +211,8 @@ static ERL_NIF_TERM swift_pg_query(ErlNifEnv *env, int argc, const ERL_NIF_TERM 
 }
 
 static ErlNifFunc nif_functions[] = {
-  {"connect", 1, swift_pg_connect, 0},
-  {"query",   3, swift_pg_query,   0}
+  {"new",  1, swift_pg_connect, 0},
+  {"exec", 3, swift_pg_query,   0}
 };
 
 static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info) {
@@ -247,4 +247,4 @@ static int upgrade(ErlNifEnv *env, void **priv, void **old_priv, ERL_NIF_TERM in
 static void unload(ErlNifEnv *env, void *priv) {
 }
 
-ERL_NIF_INIT(Elixir.Swift.Pg, nif_functions, &load, &reload, &upgrade, &unload)
+ERL_NIF_INIT(Elixir.Swift.Pg.Connection, nif_functions, &load, &reload, &upgrade, &unload)

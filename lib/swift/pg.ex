@@ -3,15 +3,12 @@ defmodule Swift.Pg do
   Postgres driver with libpq bindings.
   """
 
-  @on_load :init
+  def connect, do: Swift.Pg.Connection.new
+  def connect(params = %{}), do: Swift.Pg.Connection.new(params)
 
-  defp init do
-    :erlang.load_nif "priv/swift/pg", 0
-  end
+  def exec(db, sql), do: Swift.Pg.Connection.exec(db, sql)
+  def exec(db, sql, bind), do: Swift.Pg.Connection.exec(db, sql, bind)
 
-  def connect, do: connect(%{})
-  def connect(_), do: {:error, "nif not loaded"}
-
-  def query(r, sql), do: query(r, sql, [])
-  def query(_r, _sql, _list), do: {:error, "nif not loaded"}
+  # TODO
+  # def prepare(db, sql)
 end

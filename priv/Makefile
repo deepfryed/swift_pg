@@ -33,7 +33,7 @@ LDFLAGS  += $(LPQ_LIBS) $(ERTS_LIBS)
 # ==============================================================================
 
 # ============= common library sources =========================================
-LIB_SRCS  = $(wildcard src/*.c)
+LIB_SRCS  = $(wildcard src/pg/*.c)
 LIB_CSRCS = $(LIB_SRCS:src/%=%)
 LIB_OBJS  = $(addprefix obj/,$(LIB_CSRCS:.c=.o))
 LIB_DLLS  = $(addprefix swift/,$(LIB_CSRCS:.c=.so))
@@ -48,7 +48,7 @@ all: $(LIB_DLLS)
 -include $(DEPENDS)
 
 swift/%.so: obj/%.o
-	@mkdir -p swift
+	@mkdir -p swift/pg
 	$(CC) $^ $(LDFLAGS) -o $@
 
 obj/%.o: src/%.c
