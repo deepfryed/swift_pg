@@ -21,6 +21,8 @@ static ERL_NIF_TERM k_port;
 static ERL_NIF_TERM k_user;
 static ERL_NIF_TERM k_pass;
 static ERL_NIF_TERM k_db;
+static ERL_NIF_TERM k_ok;
+static ERL_NIF_TERM k_error;
 
 typedef struct {
   PGconn *connection;
@@ -32,7 +34,7 @@ typedef struct {
 // helper macros
 // -----------------------------------------------------------------------------
 #define CSTRING_TO_TERM(e, s) cstring_to_term(e, s, strlen(s))
-#define SWIFT_PG_ERROR(e, m)  enif_make_tuple2(e, enif_make_atom(e, "error"), CSTRING_TO_TERM(e, m))
+#define SWIFT_PG_ERROR(e, m)  enif_make_tuple2(e, k_error, CSTRING_TO_TERM(e, m))
 #define MIN(a, b)             ((a) < (b) ? (a) : (b))
 #define MAX(a, b)             ((a) > (b) ? (a) : (b))
 // -----------------------------------------------------------------------------
@@ -75,7 +77,7 @@ void swift_pg_release(ErlNifEnv *env, void *res) {
 // -----------------------------------------------------------------------------
 // API
 // -----------------------------------------------------------------------------
-ERL_NIF_TERM swift_pg_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+static ERL_NIF_TERM swift_pg_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
   char info[1024], buffer[512];
 
   if (argc == 0)
@@ -164,12 +166,53 @@ ERL_NIF_TERM swift_pg_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
   ERL_NIF_TERM db_term = enif_make_resource(env, db_res);
   enif_release_resource(db_res);
 
-  return enif_make_tuple2(env, enif_make_atom(env, "ok"), db_term);
+  return enif_make_tuple2(env, k_ok, db_term);
+}
+
+static ERL_NIF_TERM swift_pg_query(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+  char sql[4096];
+  swift_db_t *db;
+  swift_db_t **db_res = NULL;
+
+  if (argc != 3)
+    return SWIFT_PG_ERROR(env, "requires db resource, sql and bind values (or empty list)");
+
+  if (!enif_get_resource(env, argv[0], SWIFT_DB_RES_TYPE, (void**)&db_res))
+    return SWIFT_PG_ERROR(env, "first argument needs to be db connection resource");
+
+  if (!term_to_cstring(env, argv[1], sql, sizeof(sql)))
+    return SWIFT_PG_ERROR(env, "sql should be a valid binary");
+
+  unsigned int length;
+  if (!enif_get_list_length(env, argv[2], &length))
+    return SWIFT_PG_ERROR(env, "bind values should be a list");
+
+  db = *db_res;
+  if (length == 0) {
+    ERL_NIF_TERM rv, error;
+    PGresult *res = PQexec(db->connection, sql);
+    switch (PQresultStatus(res)) {
+      case PGRES_FATAL_ERROR:
+      case PGRES_NONFATAL_ERROR:
+      case PGRES_BAD_RESPONSE:
+        error = SWIFT_PG_ERROR(env, PQerrorMessage(db->connection));
+        rv = enif_make_tuple2(env, k_error, error);
+        break;
+      default:
+        rv = enif_make_tuple2(env, k_ok, enif_make_int(env, PQntuples(res)));
+    }
+
+    PQclear(res);
+    return rv;
+  }
+  else {
+    return SWIFT_PG_ERROR(env, "TODO bind values");
+  }
 }
 
 static ErlNifFunc nif_functions[] = {
-  {"connect", 1, swift_pg_connect, 0}
-//  {"query",   3, swift_pg_query,   0}
+  {"connect", 1, swift_pg_connect, 0},
+  {"query",   3, swift_pg_query,   0}
 };
 
 static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info) {
@@ -182,11 +225,13 @@ static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info) {
     NULL
   );
 
-  k_host = enif_make_atom(env, "host");
-  k_port = enif_make_atom(env, "port");
-  k_user = enif_make_atom(env, "user");
-  k_pass = enif_make_atom(env, "password");
-  k_db   = enif_make_atom(env, "db");
+  k_host  = enif_make_atom(env, "host");
+  k_port  = enif_make_atom(env, "port");
+  k_user  = enif_make_atom(env, "user");
+  k_pass  = enif_make_atom(env, "password");
+  k_db    = enif_make_atom(env, "db");
+  k_ok    = enif_make_atom(env, "ok");
+  k_error = enif_make_atom(env, "error");
 
   return 0;
 }
