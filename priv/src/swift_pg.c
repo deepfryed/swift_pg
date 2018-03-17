@@ -64,7 +64,7 @@ static bool term_to_cstring(ErlNifEnv *env, ERL_NIF_TERM term, void *s, size_t s
 // resource allocation
 // -----------------------------------------------------------------------------
 void swift_pg_release(ErlNifEnv *env, void *res) {
-  swift_db_t *db = (swift_db_t *)res;
+  swift_db_t *db = *(swift_db_t **)res;
   if (db && db->connection) {
     PQfinish(db->connection);
     db->connection = NULL;
@@ -159,15 +159,13 @@ ERL_NIF_TERM swift_pg_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
   swift_db_t **db_res = enif_alloc_resource(SWIFT_DB_RES_TYPE, sizeof(swift_db_t *));
   if (!db_res)
     return SWIFT_PG_ERROR(env, "unable to allocate resource");
-  memcpy(db_res, &db, sizeof(swift_db_t *));
+  *db_res = db;
 
   ERL_NIF_TERM db_term = enif_make_resource(env, db_res);
   enif_release_resource(db_res);
 
   return enif_make_tuple2(env, enif_make_atom(env, "ok"), db_term);
 }
-
-
 
 static ErlNifFunc nif_functions[] = {
   {"connect", 1, swift_pg_connect, 0}
