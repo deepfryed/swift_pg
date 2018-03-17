@@ -247,4 +247,4 @@ static int upgrade(ErlNifEnv *env, void **priv, void **old_priv, ERL_NIF_TERM in
 static void unload(ErlNifEnv *env, void *priv) {
 }
 
-ERL_NIF_INIT(Elixir.SwiftPg, nif_functions, &load, &reload, &upgrade, &unload)
+ERL_NIF_INIT(Elixir.Swift.Pg, nif_functions, &load, &reload, &upgrade, &unload)

@@ -20,4 +20,5 @@ erl_crash.dump
 *.ez
 
 priv/*.so
+priv/swift/
 priv/obj/

@@ -1,12 +1,12 @@
-defmodule SwiftPg do
+defmodule Swift.Pg do
   @moduledoc """
-  Documentation for SwiftPg.
+  Postgres driver with libpq bindings.
   """
 
   @on_load :init
 
   defp init do
-    :erlang.load_nif "priv/swift_pg", 0
+    :erlang.load_nif "priv/swift/pg", 0
   end
 
   def connect, do: connect(%{})

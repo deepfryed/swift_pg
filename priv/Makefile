@@ -16,8 +16,13 @@ CFLAGS   += -Werror
 CFLAGS   += -I$(ERTS_INCL) -I$(LPQ_INCL)
 
 LPQ_LIBS  = -L$(shell pg_config --libdir) -lpq
-#LDFLAGS   = -fPIC -shared 
-LDFLAGS   = -fPIC -dynamiclib -undefined dynamic_lookup 
+
+ifeq ($(OS),Darwin)
+  LDFLAGS = -fPIC -dynamiclib -undefined dynamic_lookup 
+else
+  LDFLAGS = -fPIC -shared 
+endif
+
 LDFLAGS  += $(LPQ_LIBS) $(ERTS_LIBS)
 # ==============================================================================
 
@@ -31,18 +36,20 @@ LDFLAGS  += $(LPQ_LIBS) $(ERTS_LIBS)
 LIB_SRCS  = $(wildcard src/*.c)
 LIB_CSRCS = $(LIB_SRCS:src/%=%)
 LIB_OBJS  = $(addprefix obj/,$(LIB_CSRCS:.c=.o))
+LIB_DLLS  = $(addprefix swift/,$(LIB_CSRCS:.c=.so))
 # ==============================================================================
 
 # ============= dependencies ===================================================
 DEPENDS   = $(LIB_OBJS:.o=.d)
 # ==============================================================================
 
-all: swift_pg.so
+all: $(LIB_DLLS)
 
 -include $(DEPENDS)
 
-swift_pg.so: $(LIB_OBJS)
-	$(CC) $(LIB_OBJS) $(LDFLAGS) -o swift_pg.so
+swift/%.so: obj/%.o
+	@mkdir -p swift
+	$(CC) $^ $(LDFLAGS) -o $@
 
 obj/%.o: src/%.c
 	@mkdir -p $(dir $@)
@@ -53,7 +60,7 @@ bin/%: obj/%.o $(LIB_OBJS)
 	$(CC) $(LDFLAGS) -Wl,-Map=$@.map -o $@ $^
 
 clean:
-	rm -rf obj/* *.so
+	rm -rf obj/* swift/*.so
 
 # allows make print-<x> to print the value of variable x
 print-%:
