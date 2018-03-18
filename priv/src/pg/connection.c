@@ -25,8 +25,13 @@ static ERL_NIF_TERM k_port;
 static ERL_NIF_TERM k_user;
 static ERL_NIF_TERM k_pass;
 static ERL_NIF_TERM k_db;
+
 static ERL_NIF_TERM k_ok;
 static ERL_NIF_TERM k_error;
+
+static ERL_NIF_TERM k_true;
+static ERL_NIF_TERM k_false;
+static ERL_NIF_TERM k_nil;
 
 typedef struct {
   PGconn *connection;
@@ -155,30 +160,98 @@ static ERL_NIF_TERM swift_pg_connection_exec(ErlNifEnv *env, int argc, const ERL
   if (!term_to_cstring(env, argv[1], sql, sizeof(sql)))
     return SWIFT_PG_ERROR(env, "sql should be a valid binary");
 
-  unsigned int length;
-  if (!enif_get_list_length(env, argv[2], &length))
+  unsigned int bind_length;
+  if (!enif_get_list_length(env, argv[2], &bind_length))
     return SWIFT_PG_ERROR(env, "bind values should be a list");
 
   db = *db_res;
-  if (length == 0) {
-    ERL_NIF_TERM rv, error;
-    PGresult *res = PQexec(db->connection, sql);
+
+  ERL_NIF_TERM rv;
+  PGresult *res = NULL;
+  const char *s_true = "true", *s_false = "false";
+
+  if (bind_length > 0) {
+    char **paramValues = (char **)malloc(sizeof(char *) * bind_length);
+    int *paramLengths = (int *)malloc(sizeof(int) * bind_length);
+    int *paramFormats = (int *)malloc(sizeof(int) * bind_length);
+
+    ERL_NIF_TERM head, tail = argv[2];
+
+    for (unsigned int n = 0; n < bind_length; n++) {
+      if (!enif_get_list_cell(env, tail, &head, &tail)) {
+        rv = SWIFT_PG_ERROR(env, "missing bind value");
+        goto bind_parameters_cleanup;
+      }
+
+      paramFormats[n] = 0;
+
+      if (enif_is_atom(env, head)) {
+        if (enif_compare(head, k_true) == 0) {
+          paramValues[n] = (char *)s_true;
+          paramLengths[n] = 4;
+        }
+        else if (enif_compare(head, k_false) == 0) {
+          paramValues[n] = (char *)s_false;
+          paramLengths[n] = 5;
+        }
+        else if (enif_compare(head, k_nil) == 0) {
+          paramValues[n] = 0;
+          paramLengths[n] = 0;
+        }
+        else {
+          rv = SWIFT_PG_ERROR(env, "unsupported atom in bind value");
+          goto bind_parameters_cleanup;
+        }
+      }
+      else if (enif_is_binary(env, head)) {
+        ErlNifBinary binary;
+        enif_inspect_binary(env, head, &binary);
+        paramValues[n] = malloc(binary.size);
+        memcpy(paramValues[n], binary.data, binary.size);
+        paramLengths[n] = binary.size;
+      }
+      else {
+        rv = SWIFT_PG_ERROR(env, "only supports binary bind values at the moment");
+        goto bind_parameters_cleanup;
+      }
+    }
+
+    res = PQexecParams(
+      db->connection,
+      sql,
+      bind_length,
+      NULL,
+      (const char *const *)paramValues,
+      paramLengths,
+      paramFormats,
+      0
+    );
+
+    bind_parameters_cleanup:
+      for (size_t n = 0; n < bind_length; n++)
+        if (paramValues[n]) free(paramValues[n]);
+
+      free(paramValues);
+      free(paramLengths);
+      free(paramFormats);
+  }
+  else {
+    res = PQexec(db->connection, sql);
+  }
+
+  if (res) {
     switch (PQresultStatus(res)) {
       case PGRES_FATAL_ERROR:
       case PGRES_NONFATAL_ERROR:
       case PGRES_BAD_RESPONSE:
-        error = SWIFT_PG_ERROR(env, PQerrorMessage(db->connection));
-        rv = enif_make_tuple2(env, k_error, error);
+        rv = SWIFT_PG_ERROR(env, PQerrorMessage(db->connection));
         break;
       default:
         rv = enif_make_tuple2(env, k_ok, swift_pg_result_new(env, res));
     }
+  }
 
-    return rv;
-  }
-  else {
-    return SWIFT_PG_ERROR(env, "TODO bind values");
-  }
+  return rv;
 }
 
 static ErlNifFunc nif_functions[] = {
@@ -201,8 +274,13 @@ static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info) {
   k_user  = enif_make_atom(env, "user");
   k_pass  = enif_make_atom(env, "password");
   k_db    = enif_make_atom(env, "db");
+
   k_ok    = enif_make_atom(env, "ok");
   k_error = enif_make_atom(env, "error");
+
+  k_true  = enif_make_atom(env, "true");
+  k_false = enif_make_atom(env, "false");
+  k_nil   = enif_make_atom(env, "nil");
 
   return 0;
 }
