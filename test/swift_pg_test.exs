@@ -8,8 +8,8 @@ defmodule Swift.Pg.Test do
 
   test "runs query without parameters" do
     assert {:ok, db} = Swift.Pg.connect
-    assert {:ok, rv} = Swift.Pg.exec(db, "select 1")
-  
-    assert rv > 0
+    assert {:ok,  r} = Swift.Pg.exec(db, "select 1")
+
+    assert %Swift.Pg.Result{count: 1, cursor: 0} = r
   end
 end

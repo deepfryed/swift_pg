@@ -14,7 +14,11 @@
 #include <libpq-fe.h>
 #include <libpq/libpq-fs.h>
 
-ErlNifResourceType *SWIFT_DB_RES_TYPE;
+#include "macros.h"
+#include "result.h"
+#include "utils.h"
+
+ErlNifResourceType *SWIFT_PG_CONNECTION_RES_TYPE;
 
 static ERL_NIF_TERM k_host;
 static ERL_NIF_TERM k_port;
@@ -28,45 +32,13 @@ typedef struct {
   PGconn *connection;
   int current_transaction_nesting_level;
   int native_bind_placeholders;
-} swift_db_t;
-
-// -----------------------------------------------------------------------------
-// helper macros
-// -----------------------------------------------------------------------------
-#define CSTRING_TO_TERM(e, s) cstring_to_term(e, s, strlen(s))
-#define SWIFT_PG_ERROR(e, m)  enif_make_tuple2(e, k_error, CSTRING_TO_TERM(e, m))
-#define MIN(a, b)             ((a) < (b) ? (a) : (b))
-#define MAX(a, b)             ((a) > (b) ? (a) : (b))
-// -----------------------------------------------------------------------------
-// term & typecasts
-// -----------------------------------------------------------------------------
-
-static inline ERL_NIF_TERM cstring_to_term(ErlNifEnv *env, const char *s, size_t size) {
-  ERL_NIF_TERM term;
-  unsigned char *bin;
-  bin = enif_make_new_binary(env, size, &term);
-  memcpy(bin, s, size);
-  return term;
-}
-
-static bool term_to_cstring(ErlNifEnv *env, ERL_NIF_TERM term, void *s, size_t size) {
-  ErlNifBinary binary;
-  if (enif_inspect_binary(env, term, &binary)) {
-    size = MIN(binary.size, size - 1);
-    memcpy(s, binary.data, size);
-    ((char*)s)[size] = 0;
-    return true;
-  }
-  else {
-    return false;
-  }
-}
+} swift_pg_connection_t;
 
 // -----------------------------------------------------------------------------
 // resource allocation
 // -----------------------------------------------------------------------------
-void swift_pg_release(ErlNifEnv *env, void *res) {
-  swift_db_t *db = *(swift_db_t **)res;
+static void swift_pg_connection_release(ErlNifEnv *env, void *res) {
+  swift_pg_connection_t *db = *(swift_pg_connection_t **)res;
   if (db && db->connection) {
     PQfinish(db->connection);
     db->connection = NULL;
@@ -77,7 +49,7 @@ void swift_pg_release(ErlNifEnv *env, void *res) {
 // -----------------------------------------------------------------------------
 // API
 // -----------------------------------------------------------------------------
-static ERL_NIF_TERM swift_pg_connect(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+static ERL_NIF_TERM swift_pg_connection_new(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
   char info[1024], buffer[512];
 
   if (argc == 0)
@@ -142,7 +114,7 @@ static ERL_NIF_TERM swift_pg_connect(ErlNifEnv *env, int argc, const ERL_NIF_TER
     }
   }
 
-  swift_db_t *db = (swift_db_t *) malloc(sizeof(swift_db_t));
+  swift_pg_connection_t *db = (swift_pg_connection_t *) malloc(sizeof(swift_pg_connection_t));
   memset(db, 0, sizeof(*db));
 
   db->connection = PQconnectdb(info);
@@ -158,7 +130,7 @@ static ERL_NIF_TERM swift_pg_connect(ErlNifEnv *env, int argc, const ERL_NIF_TER
     return error;
   }
 
-  swift_db_t **db_res = enif_alloc_resource(SWIFT_DB_RES_TYPE, sizeof(swift_db_t *));
+  swift_pg_connection_t **db_res = enif_alloc_resource(SWIFT_PG_CONNECTION_RES_TYPE, sizeof(swift_pg_connection_t *));
   if (!db_res)
     return SWIFT_PG_ERROR(env, "unable to allocate resource");
   *db_res = db;
@@ -169,15 +141,15 @@ static ERL_NIF_TERM swift_pg_connect(ErlNifEnv *env, int argc, const ERL_NIF_TER
   return enif_make_tuple2(env, k_ok, db_term);
 }
 
-static ERL_NIF_TERM swift_pg_query(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+static ERL_NIF_TERM swift_pg_connection_exec(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
   char sql[4096];
-  swift_db_t *db;
-  swift_db_t **db_res = NULL;
+  swift_pg_connection_t *db;
+  swift_pg_connection_t **db_res = NULL;
 
   if (argc != 3)
     return SWIFT_PG_ERROR(env, "requires db resource, sql and bind values (or empty list)");
 
-  if (!enif_get_resource(env, argv[0], SWIFT_DB_RES_TYPE, (void**)&db_res))
+  if (!enif_get_resource(env, argv[0], SWIFT_PG_CONNECTION_RES_TYPE, (void**)&db_res))
     return SWIFT_PG_ERROR(env, "first argument needs to be db connection resource");
 
   if (!term_to_cstring(env, argv[1], sql, sizeof(sql)))
@@ -199,10 +171,9 @@ static ERL_NIF_TERM swift_pg_query(ErlNifEnv *env, int argc, const ERL_NIF_TERM 
         rv = enif_make_tuple2(env, k_error, error);
         break;
       default:
-        rv = enif_make_tuple2(env, k_ok, enif_make_int(env, PQntuples(res)));
+        rv = enif_make_tuple2(env, k_ok, swift_pg_result_new(env, res));
     }
 
-    PQclear(res);
     return rv;
   }
   else {
@@ -211,16 +182,17 @@ static ERL_NIF_TERM swift_pg_query(ErlNifEnv *env, int argc, const ERL_NIF_TERM 
 }
 
 static ErlNifFunc nif_functions[] = {
-  {"new",  1, swift_pg_connect, 0},
-  {"exec", 3, swift_pg_query,   0}
+  {"new",     1, swift_pg_connection_new,  0},
+  {"do_exec", 3, swift_pg_connection_exec, 0}
 };
 
 static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info) {
-  SWIFT_DB_RES_TYPE = enif_open_resource_type(
+  printf("load connection\n");
+  SWIFT_PG_CONNECTION_RES_TYPE = enif_open_resource_type(
     env,
     NULL,
-    "swift_pg",
-    swift_pg_release,
+    "swift_pg_connection",
+    swift_pg_connection_release,
     ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
     NULL
   );
