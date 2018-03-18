@@ -13,7 +13,7 @@ defmodule Swift.Pg.Result do
   def at(nil, _cursor), do: raise "invalid result set"
   def at(_r, _cursor), do: raise "nit not loaded"
 
-  defp init do
+  def init do
     :erlang.load_nif "priv/swift/pg/result", 0
   end
 end

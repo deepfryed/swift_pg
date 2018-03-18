@@ -3,12 +3,11 @@ defmodule Swift.Pg do
   Postgres driver with libpq bindings.
   """
 
-  def connect, do: Swift.Pg.Connection.new
-  def connect(params = %{}), do: Swift.Pg.Connection.new(params)
+  alias Swift.Pg.Connection
 
-  def exec(db, sql), do: Swift.Pg.Connection.exec(db, sql)
-  def exec(db, sql, bind), do: Swift.Pg.Connection.exec(db, sql, bind)
+  def connect, do: Connection.new
+  def connect(params = %{}), do: Connection.new(params)
 
-  # TODO
-  # def prepare(db, sql)
+  def exec(db, sql), do: Connection.exec(db, sql)
+  def exec(db, sql, bind), do: Connection.exec(db, sql, bind)
 end

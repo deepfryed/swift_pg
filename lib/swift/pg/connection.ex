@@ -19,6 +19,7 @@ defmodule Swift.Pg.Connection do
   end
 
   defp init do
+    Swift.Pg.Result.init
     :erlang.load_nif "priv/swift/pg/connection", 0
   end
 

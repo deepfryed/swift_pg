@@ -78,21 +78,36 @@ static ERL_NIF_TERM swift_pg_result_at(ErlNifEnv *env, int argc, const ERL_NIF_T
 
   r = *r_res;
 
-  int nfields = PQnfields(r->result);
-  ERL_NIF_TERM *fields = (ERL_NIF_TERM*)malloc(nfields * sizeof(ERL_NIF_TERM));
+  int length;
+  ERL_NIF_TERM ntuple;
+  ERL_NIF_TERM tuple = enif_make_new_map(env);
+
   for (int n = 0; n < PQnfields(r->result); n++) {
-    if (PQgetisnull(r->result, cursor, n))
-      fields[n] = enif_make_atom(env, "nil");
+    const char *fname = PQfname(r->result, n);
+    ERL_NIF_TERM field = enif_make_atom(env, fname);
+
+    if (PQgetisnull(r->result, cursor, n)) {
+      enif_make_map_put(env, tuple, field, enif_make_atom(env, "nil"), &ntuple);
+      tuple = ntuple;
+    }
     else {
-      int length = PQgetlength(r->result, cursor, n);
-      fields[n] = cstring_to_term(env, PQgetvalue(r->result, cursor, n), length);
+      length = PQgetlength(r->result, cursor, n);
+      enif_make_map_put(
+        env,
+        tuple,
+        field,
+        cstring_to_term(env, PQgetvalue(r->result, cursor, n), length),
+        &ntuple
+      );
+      tuple = ntuple;
     }
   }
 
-  ERL_NIF_TERM tuple = enif_make_list_from_array(env, fields, (unsigned)nfields);
-  free(fields);
   return tuple;
 }
+
+//static ERL_NIF_TERM swift_pg_result_fields(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+//}
 
 static ErlNifFunc nif_functions[] = {
   {"ntuples",  1, swift_pg_result_ntuples, 0},
@@ -100,8 +115,6 @@ static ErlNifFunc nif_functions[] = {
 };
 
 static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info) {
-  printf("load result\n");
-
   SWIFT_PG_RESULT_RES_TYPE = enif_open_resource_type(
     env,
     NULL,

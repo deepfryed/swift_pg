@@ -187,7 +187,6 @@ static ErlNifFunc nif_functions[] = {
 };
 
 static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info) {
-  printf("load connection\n");
   SWIFT_PG_CONNECTION_RES_TYPE = enif_open_resource_type(
     env,
     NULL,
