@@ -21,7 +21,8 @@ defmodule SwiftPg.Mixfile do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:binaries, path: "./priv", compile: "make -s", app: false}
+      {:binaries, path: "./priv", compile: "make -s", app: false},
+      {:poison, "~> 2.2 or ~> 3.0"},
     ]
   end
 end

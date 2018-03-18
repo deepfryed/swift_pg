@@ -27,8 +27,26 @@ defmodule Swift.Pg.Connection do
 
   defp typecast([]), do: []
   defp typecast([_ | _] = list) do
-    Enum.map(list, &typecast(&1))
+    Enum.map(list, &typecast_value(&1))
   end
-  defp typecast(v) when v in [nil, true, false], do: v
-  defp typecast(v), do: to_string(v)
+
+  defp typecast_value(v) when v in [nil, true, false], do: v
+  defp typecast_value(%{} = v) do
+    Poison.encode!(v)
+  end
+  defp typecast_value([_ | _] = list) do
+    s =
+      list
+      |> Enum.map(& array_el &1)
+      |> Enum.join(",")
+    "{#{s}}"
+  end
+  defp typecast_value(v), do: to_string(v)
+
+  defp array_el(v) when is_number(v), do: v
+  defp array_el(v) when is_nil(v), do: "NULL"
+  defp array_el(v) when is_boolean(v), do: to_string(v)
+  defp array_el(v) when is_map(v), do: "'#{Poison.encode!(v)}'"
+  defp array_el(v) when is_list(v), do: typecast_value(v)
+  defp array_el(v), do: "'#{to_string(v)}'"
 end

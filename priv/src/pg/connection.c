@@ -119,7 +119,7 @@ static ERL_NIF_TERM swift_pg_connection_new(ErlNifEnv *env, int argc, const ERL_
     }
   }
 
-  swift_pg_connection_t *db = (swift_pg_connection_t *) malloc(sizeof(swift_pg_connection_t));
+  swift_pg_connection_t *db = (swift_pg_connection_t *) calloc(sizeof(swift_pg_connection_t), 1);
   memset(db, 0, sizeof(*db));
 
   db->connection = PQconnectdb(info);
@@ -171,9 +171,9 @@ static ERL_NIF_TERM swift_pg_connection_exec(ErlNifEnv *env, int argc, const ERL
   const char *s_true = "true", *s_false = "false";
 
   if (bind_length > 0) {
-    char **paramValues = (char **)malloc(sizeof(char *) * bind_length);
-    int *paramLengths = (int *)malloc(sizeof(int) * bind_length);
-    int *paramFormats = (int *)malloc(sizeof(int) * bind_length);
+    char **paramValues = (char **)calloc(bind_length, sizeof(char*));
+    int *paramLengths = (int *)calloc(bind_length, sizeof(int));
+    int *paramFormats = (int *)calloc(bind_length, sizeof(int));
 
     ERL_NIF_TERM head, tail = argv[2];
 
@@ -182,8 +182,6 @@ static ERL_NIF_TERM swift_pg_connection_exec(ErlNifEnv *env, int argc, const ERL
         rv = SWIFT_PG_ERROR(env, "missing bind value");
         goto bind_parameters_cleanup;
       }
-
-      paramFormats[n] = 0;
 
       if (enif_is_atom(env, head)) {
         if (enif_compare(head, k_true) == 0) {
@@ -206,7 +204,7 @@ static ERL_NIF_TERM swift_pg_connection_exec(ErlNifEnv *env, int argc, const ERL
       else if (enif_is_binary(env, head)) {
         ErlNifBinary binary;
         enif_inspect_binary(env, head, &binary);
-        paramValues[n] = malloc(binary.size);
+        paramValues[n] = calloc(binary.size + 1, 1);
         memcpy(paramValues[n], binary.data, binary.size);
         paramLengths[n] = binary.size;
       }
